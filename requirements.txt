@@ -1,6 +1,6 @@
 # Core Flask stack
-Flask==3.0.0
-Werkzeug==3.0.1
+Flask==3.1.2
+Werkzeug==3.1.4
 Jinja2==3.1.6
 itsdangerous==2.2.0
 
@@ -9,20 +9,21 @@ Flask-Login==0.6.3
 Flask-Mail==0.10.0
 Flask-Migrate==4.1.0
 Flask-SocketIO==5.5.1
-Flask-SQLAlchemy==3.0.3
+Flask-SQLAlchemy==3.1.1
 Flask-Uploads==0.2.1
 Flask-WTF==1.2.2
+Flask-Cors==6.0.1
 
 # Deployment / async / DB drivers
 gunicorn==23.0.0
-eventlet==0.40.1
-psycopg2-binary==2.9.10
+eventlet==0.33.3       # stable with Python 3.11
+psycopg2-binary==2.9.11
 python-dotenv==1.1.0
 
 # Media / Cloud
 cloudinary==1.44.1
-pillow==11.2.1
-opencv-python-headless==4.11.0.86
+pillow==10.4.0
+opencv-python-headless==4.9.0.80
 numpy==1.26.4
 sendgrid==6.11.0
 
@@ -32,7 +33,7 @@ urllib3==2.4.0
 python-dateutil==2.9.0.post0
 schedule==1.2.2
 
-# Optional (safe to keep)
+# Optional
 twilio==9.6.1
 qrcode==8.2
 wikipedia==1.4.0
