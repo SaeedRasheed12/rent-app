@@ -17,18 +17,25 @@ app = Flask(__name__)
 CORS(app)
 
 # ================== CONFIG ==================
-app.config["SECRET_KEY"] = os.getenv("SECRET_KEY")
+app.config["SECRET_KEY"] = os.getenv("SECRET_KEY") or "supersecretkey"
 
-# PostgreSQL fix for Railway
+# ================== DATABASE CONFIG ==================
 DATABASE_URL = os.getenv("DATABASE_URL")
+
+# Fix for old Railway connection strings
 if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+psycopg://")
+
+# Validate PostgreSQL URL
+if not DATABASE_URL or "://" not in DATABASE_URL or "postgresql" not in DATABASE_URL:
+    print("⚠️ No valid PostgreSQL URL found → Using SQLite local.db")
+    DATABASE_URL = "sqlite:///local.db"
 
 app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URL
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db = SQLAlchemy(app)
-migrate = Migrate(app, db)     # ✅ Flask-Migrate activated
+migrate = Migrate(app, db)
 
 # ================== CLOUDINARY CONFIG ==================
 cloudinary.config(
@@ -973,7 +980,7 @@ def admin_update_banner():
     db.session.commit()
 
     flash("Banner updated successfully!", "success")
-    return redirect("/admin/dashboard")
+    return redirect("/admin")
 
 # ================== MAIN ==================
 
