@@ -14,9 +14,8 @@ Flask-Uploads==0.2.1
 Flask-WTF==1.2.2
 Flask-Cors==6.0.1
 
-# Deployment / async / DB drivers
+# Deployment (NO eventlet/gevent)
 gunicorn==23.0.0
-eventlet==0.33.3       # stable with Python 3.11
 psycopg2-binary==2.9.11
 python-dotenv==1.1.0
 
@@ -26,7 +25,6 @@ pillow==10.4.0
 opencv-python-headless==4.9.0.80
 numpy==1.26.4
 sendgrid==6.11.0
-gevent==24.2.1
 
 # Utility
 requests==2.32.3
