@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <title>Admin Dashboard - Rent Anything</title>
 
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" 
-        rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
 
   <style>
     .logo-preview {
@@ -16,97 +16,169 @@
       padding: 5px;
       background: #fff;
     }
+
+    .card-header {
+      font-weight: 600;
+      font-size: 1.1rem;
+    }
   </style>
 </head>
 
 <body class="bg-light">
 
-<!-- NAVBAR -->
-<nav class="navbar navbar-dark bg-dark mb-4">
-  <div class="container-fluid">
-    <span class="navbar-brand mb-0 h1">Rent Anything – Admin Dashboard</span>
-  </div>
-</nav>
-
-<div class="container">
-
-  <!-- PLATFORM SETTINGS -->
-  <div class="card mb-4 shadow-sm">
-    <div class="card-header bg-secondary text-white">
-      Platform Settings
+  <!-- NAVBAR -->
+  <nav class="navbar navbar-expand-lg navbar-dark bg-dark shadow-sm mb-4">
+    <div class="container-fluid">
+      <span class="navbar-brand">Rent Anything – Admin Dashboard</span>
     </div>
+  </nav>
 
-    <div class="card-body">
-      <form action="/admin/update-settings" method="POST" enctype="multipart/form-data">
+  <div class="container">
 
-        <!-- Platform Name -->
-        <div class="mb-3">
-          <label class="form-label fw-bold">Platform Name</label>
-          <input type="text" name="platform_name" 
-                 class="form-control"
-                 value="{{ settings.platform_name }}">
-        </div>
+    <!-- =======================
+         HOMEPAGE BANNER SETTINGS
+    ========================== -->
+    <div class="card shadow-sm mb-4">
+      <div class="card-header bg-purple text-white" style="background:#6f42c1;">
+        Homepage Banner
+      </div>
 
-        <!-- Logo Upload -->
-        <div class="mb-3">
-          <label class="form-label fw-bold">Platform Logo</label>
+      <div class="card-body">
 
-          {% if settings.logo_url %}
-          <div class="mb-2">
-            <img src="{{ settings.logo_url }}" 
-                 alt="Logo" class="logo-preview">
+        <form action="/admin/banner/update" method="POST">
+
+          <!-- Banner Text -->
+          <div class="mb-3">
+            <label class="form-label fw-bold">Banner Text</label>
+            <input type="text" name="text" class="form-control"
+              value="{{ banner.text if banner else '' }}" required>
           </div>
-          {% endif %}
 
-          <input type="file" name="logo" class="form-control">
+          <!-- Background Color -->
+          <div class="mb-3">
+            <label class="form-label fw-bold">Background Color</label>
+            <input type="color" name="bg_color" class="form-control form-control-color"
+              value="{{ banner.bg_color if banner else '#EDE7F6' }}">
+          </div>
+
+          <!-- Text Color -->
+          <div class="mb-3">
+            <label class="form-label fw-bold">Text Color</label>
+            <input type="color" name="text_color" class="form-control form-control-color"
+              value="{{ banner.text_color if banner else '#5A2DFF' }}">
+          </div>
+
+          <!-- Active Toggle -->
+          <div class="form-check form-switch mb-3">
+            <input class="form-check-input" type="checkbox" name="active" id="bannerActive"
+              {% if banner and banner.active %} checked {% endif %}>
+            <label class="form-check-label fw-semibold" for="bannerActive">
+              Show banner on app
+            </label>
+          </div>
+
+          <!-- PREVIEW -->
+          <div class="mb-3 p-3 border rounded text-center fw-semibold"
+            style="
+              background: {{ banner.bg_color if banner else '#EDE7F6' }};
+              color: {{ banner.text_color if banner else '#5A2DFF' }};
+            ">
+            {{ banner.text if banner else 'Banner preview appears here' }}
+          </div>
+
+          <button class="btn btn-success px-4">Save Banner</button>
+
+        </form>
+      </div>
+    </div>
+
+
+    <!-- =======================
+         PLATFORM SETTINGS
+    ========================== -->
+    <div class="card shadow-sm mb-4">
+      <div class="card-header bg-secondary text-white">
+        Platform Settings
+      </div>
+
+      <div class="card-body">
+
+        <form action="/admin/update-settings" method="POST" enctype="multipart/form-data">
+
+          <!-- Platform Name -->
+          <div class="mb-3">
+            <label class="form-label fw-bold">Platform Name</label>
+            <input type="text" name="platform_name" class="form-control"
+              value="{{ settings.platform_name }}">
+          </div>
+
+          <!-- Logo Upload -->
+          <div class="mb-3">
+            <label class="form-label fw-bold">Platform Logo</label>
+
+            {% if settings.logo_url %}
+            <div class="mb-2">
+              <img src="{{ settings.logo_url }}" alt="Logo" class="logo-preview">
+            </div>
+            {% endif %}
+
+            <input type="file" name="logo" class="form-control">
+          </div>
+
+          <button class="btn btn-primary px-4">Save Changes</button>
+
+        </form>
+
+      </div>
+    </div>
+
+
+    <!-- =======================
+         REGISTERED USERS
+    ========================== -->
+    <div class="card shadow-sm mb-5">
+      <div class="card-header bg-primary text-white">
+        Registered Users
+      </div>
+
+      <div class="card-body">
+
+        {% if users %}
+        <div class="table-responsive">
+          <table class="table table-striped table-hover table-sm align-middle">
+            <thead class="table-dark">
+              <tr>
+                <th>#</th>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Phone</th>
+                <th>Registered At</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {% for u in users %}
+              <tr>
+                <td>{{ loop.index }}</td>
+                <td>{{ u.name }}</td>
+                <td>{{ u.email }}</td>
+                <td>{{ u.phone or '-' }}</td>
+                <td>{{ u.created_at }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
         </div>
+        {% else %}
+        <p class="text-muted">No users registered yet.</p>
+        {% endif %}
 
-        <button class="btn btn-primary px-4">Save Changes</button>
-      </form>
+      </div>
     </div>
+
+
   </div>
-
-  <!-- REGISTERED USERS -->
-  <div class="card mb-4 shadow-sm">
-    <div class="card-header bg-primary text-white">
-      Registered Users
-    </div>
-
-    <div class="card-body">
-
-      {% if users %}
-      <table class="table table-striped table-hover table-sm align-middle">
-        <thead class="table-dark">
-          <tr>
-            <th>#</th>
-            <th>Name</th>
-            <th>Email</th>
-            <th>Phone</th>
-            <th>Registered At</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {% for u in users %}
-          <tr>
-            <td>{{ loop.index }}</td>
-            <td>{{ u.name }}</td>
-            <td>{{ u.email }}</td>
-            <td>{{ u.phone or '-' }}</td>
-            <td>{{ u.created_at }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-
-      {% else %}
-      <p class="text-muted">No users registered yet.</p>
-      {% endif %}
-
-    </div>
-  </div>
-
-</div>
 
 </body>
+
 </html>

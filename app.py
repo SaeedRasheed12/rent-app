@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, render_template, redirect, url_for
+from flask import Flask, request, jsonify, render_template, redirect, url_for, flash
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -73,6 +73,12 @@ class Listing(db.Model):
     area = db.Column(db.String(100))
     address = db.Column(db.String(255))
 
+class AppBanner(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    text = db.Column(db.String(255), nullable=False)
+    bg_color = db.Column(db.String(30), default="#EDE7F6")   # Light purple
+    text_color = db.Column(db.String(30), default="#5A2DFF") # Deep purple
+    active = db.Column(db.Boolean, default=True)
 
 class Chat(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -937,6 +943,37 @@ def check_rent_request():
         "exists": True,
         "status": req.status
     })
+
+@app.route("/api/banner")
+def get_banner():
+    banner = AppBanner.query.filter_by(active=True).first()
+    if banner:
+        return {
+            "success": True,
+            "text": banner.text,
+            "bg_color": banner.bg_color,
+            "text_color": banner.text_color
+        }
+    return {"success": False, "message": "No banner active"}
+
+@app.route("/admin/banner/update", methods=["POST"])
+def admin_update_banner():
+    data = request.form
+
+    banner = AppBanner.query.first()
+    if not banner:
+        banner = AppBanner()
+
+    banner.text = data.get("text")
+    banner.bg_color = data.get("bg_color", "#EDE7F6")
+    banner.text_color = data.get("text_color", "#5A2DFF")
+    banner.active = True if data.get("active") == "on" else False
+
+    db.session.add(banner)
+    db.session.commit()
+
+    flash("Banner updated successfully!", "success")
+    return redirect("/admin/dashboard")
 
 # ================== MAIN ==================
 
