@@ -55,6 +55,7 @@ class User(db.Model):
     created_at = db.Column(db.DateTime, server_default=db.func.now())
     
     is_blocked = db.Column(db.Boolean, default=False)   # ⭐ NEW
+    fcm_token = db.Column(db.String(500))
 
 from sqlalchemy.dialects.postgresql import JSON
 
@@ -446,9 +447,27 @@ def send_message():
     if not all([chat_id, sender_id, text]):
         return jsonify({"success": False})
 
+    # Save message
     msg = Message(chat_id=chat_id, sender_id=sender_id, text=text)
     db.session.add(msg)
     db.session.commit()
+
+    # 🔥 Find receiver
+    chat = Chat.query.get(chat_id)
+    receiver_id = chat.user2_id if chat.user1_id == sender_id else chat.user1_id
+    receiver = User.query.get(receiver_id)
+    sender = User.query.get(sender_id)
+
+    # 🔥 Push message notification
+    send_push(
+        receiver.fcm_token,
+        title=f"New message from {sender.name}",
+        body=text,
+        data={
+            "screen": "chat",
+            "chat_id": str(chat_id)
+        }
+    )
 
     return jsonify({"success": True})
 
@@ -746,14 +765,20 @@ def create_rental_request():
     )
 
     db.session.add(req)
-
-    # ❌ Do NOT hide listing here
-    # listing.is_rented = True  <-- REMOVED
-
     db.session.commit()
 
-    return jsonify({"success": True, "message": "Request created"})
+    # 🔥 SEND PUSH TO OWNER
+    owner = User.query.get(data["owner_id"])
+    renter = User.query.get(data["renter_id"])
 
+    send_push(
+        owner.fcm_token,
+        title="New Rental Request",
+        body=f"{renter.name} wants to rent your item.",
+        data={"screen": "rentals"}
+    )
+
+    return jsonify({"success": True, "message": "Request created"})
 
 @app.route("/api/rent/status/<int:listing_id>/<int:user_id>")
 def rent_status(listing_id, user_id):
@@ -1088,6 +1113,38 @@ def admin_delete_user(user_id):
 
     flash("User deleted permanently!", "danger")
     return redirect("/admin")
+
+import firebase_admin
+from firebase_admin import credentials, messaging
+
+cred = credentials.Certificate("service_account.json")
+firebase_admin.initialize_app(cred)
+
+@app.route("/api/update_fcm_token", methods=["POST"])
+def update_fcm_token():
+    data = request.json
+    user = User.query.get(data["user_id"])
+    user.fcm_token = data["fcm_token"]
+    db.session.commit()
+    return jsonify({"success": True})
+
+def send_push(token, title, body, data=None):
+    if not token:
+        return
+
+    message = messaging.Message(
+        notification=messaging.Notification(
+            title=title,
+            body=body
+        ),
+        data=data or {},
+        token=token
+    )
+
+    try:
+        messaging.send(message)
+    except Exception as e:
+        print("Push Error:", e)
 
 # ================== MAIN ==================
 
