@@ -1124,27 +1124,36 @@ firebase_admin.initialize_app(cred)
 def update_fcm_token():
     data = request.json
     user = User.query.get(data["user_id"])
+
+    if not user:
+        return jsonify({"success": False, "message": "User not found"}), 404
+
     user.fcm_token = data["fcm_token"]
     db.session.commit()
+
     return jsonify({"success": True})
 
 def send_push(token, title, body, data=None):
     if not token:
+        print("⚠️ No token found, skipping.")
         return
 
     message = messaging.Message(
+        token=token,
         notification=messaging.Notification(
             title=title,
             body=body
         ),
-        data=data or {},
-        token=token
+        data=data or {}
     )
 
     try:
-        messaging.send(message)
+        response = messaging.send(message)
+        print("📨 Push Sent:", response)
+
     except Exception as e:
-        print("Push Error:", e)
+        print("❌ FCM Error:", e)
+
 
 # ================== MAIN ==================
 
