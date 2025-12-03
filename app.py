@@ -53,6 +53,8 @@ class User(db.Model):
     phone = db.Column(db.String(50), unique=True)   # 🔥 MAKE PHONE UNIQUE
     password = db.Column(db.String(200), nullable=False)
     created_at = db.Column(db.DateTime, server_default=db.func.now())
+    
+    is_blocked = db.Column(db.Boolean, default=False)   # ⭐ NEW
 
 from sqlalchemy.dialects.postgresql import JSON
 
@@ -224,19 +226,30 @@ def api_signup():
 def api_login():
     data = request.get_json() or {}
 
-    email = (data.get("email") or "").strip().lower()   # 🔥 normalize email
+    email = (data.get("email") or "").strip().lower()
     password = data.get("password")
 
-    # 🔥 Check fields
-    if not all([email, password]):
+    if not email or not password:
         return jsonify({"success": False, "error": "Missing credentials"}), 400
 
-    # 🔥 Case-insensitive email lookup
+    # Case-insensitive search
     user = User.query.filter(db.func.lower(User.email) == email).first()
 
-    if not user or not check_password_hash(user.password, password):
+    if not user:
         return jsonify({"success": False, "error": "Invalid login"}), 401
 
+    # 🚫 BLOCK CHECK
+    if user.is_blocked:
+        return jsonify({
+            "success": False,
+            "error": "Your account has been blocked by admin."
+        }), 403
+
+    # Password check
+    if not check_password_hash(user.password, password):
+        return jsonify({"success": False, "error": "Invalid login"}), 401
+
+    # SUCCESS
     return jsonify({
         "success": True,
         "message": "Login successful",
@@ -244,9 +257,10 @@ def api_login():
             "id": user.id,
             "name": user.name,
             "email": user.email,
-            "phone": user.phone
+            "phone": user.phone,
+            "is_blocked": user.is_blocked     # optional but helpful for Flutter
         }
-    })
+    }), 200
 
 # ================== SETTINGS API ==================
 
@@ -980,6 +994,65 @@ def admin_update_banner():
     db.session.commit()
 
     flash("Banner updated successfully!", "success")
+    return redirect("/admin")
+
+@app.route("/admin/user/<int:user_id>")
+def admin_user_details(user_id):
+    user = User.query.get_or_404(user_id)
+    listings = Listing.query.filter_by(user_id=user_id).all()
+
+    return render_template(
+        "admin_user_details.html",
+        user=user,
+        listings=listings
+    )
+
+@app.route("/admin/listing/<int:id>")
+def admin_listing_details(id):
+    listing = Listing.query.get_or_404(id)
+    user = User.query.get(listing.user_id)
+
+    return render_template(
+        "admin_listing_details.html",
+        listing=listing,
+        user=user
+    )
+
+@app.route("/admin/user/block/<int:user_id>", methods=["POST"])
+def admin_block_user(user_id):
+    user = User.query.get_or_404(user_id)
+    user.is_blocked = True
+    db.session.commit()
+    flash("User blocked successfully!", "warning")
+    return redirect("/admin")
+
+
+@app.route("/admin/user/unblock/<int:user_id>", methods=["POST"])
+def admin_unblock_user(user_id):
+    user = User.query.get_or_404(user_id)
+    user.is_blocked = False
+    db.session.commit()
+    flash("User unblocked successfully!", "success")
+    return redirect("/admin")
+
+
+@app.route("/admin/user/delete/<int:user_id>", methods=["POST"])
+def admin_delete_user(user_id):
+    user = User.query.get_or_404(user_id)
+
+    # Delete all listings
+    Listing.query.filter_by(user_id=user.id).delete()
+
+    # Delete chats/messages
+    Message.query.filter_by(sender_id=user.id).delete()
+
+    # Delete rental requests
+    RentalRequest.query.filter_by(user_id=user.id).delete()
+
+    db.session.delete(user)
+    db.session.commit()
+
+    flash("User deleted permanently!", "danger")
     return redirect("/admin")
 
 # ================== MAIN ==================
