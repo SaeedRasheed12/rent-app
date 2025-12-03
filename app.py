@@ -1040,15 +1040,49 @@ def admin_unblock_user(user_id):
 def admin_delete_user(user_id):
     user = User.query.get_or_404(user_id)
 
-    # Delete all listings
-    Listing.query.filter_by(user_id=user.id).delete()
+    # ======================================
+    # 1. DELETE LISTINGS BY USER
+    # ======================================
+    Listing.query.filter_by(user_id=user.id).delete(synchronize_session=False)
 
-    # Delete chats/messages
-    Message.query.filter_by(sender_id=user.id).delete()
+    # ======================================
+    # 2. DELETE MESSAGES SENT BY USER
+    # ======================================
+    Message.query.filter_by(sender_id=user.id).delete(synchronize_session=False)
 
-    # Delete rental requests
-    RentalRequest.query.filter_by(user_id=user.id).delete()
+    # ======================================
+    # 3. DELETE ALL MESSAGES IN CHATS WHERE USER WAS INVOLVED
+    # ======================================
+    # Find all chat IDs where user is user1 or user2
+    chat_ids = db.session.query(Chat.id).filter(
+        (Chat.user1_id == user.id) |
+        (Chat.user2_id == user.id)
+    ).all()
 
+    chat_ids = [c.id for c in chat_ids]
+
+    if chat_ids:
+        Message.query.filter(Message.chat_id.in_(chat_ids)).delete(synchronize_session=False)
+
+    # ======================================
+    # 4. DELETE THE CHATS
+    # ======================================
+    Chat.query.filter(
+        (Chat.user1_id == user.id) |
+        (Chat.user2_id == user.id)
+    ).delete(synchronize_session=False)
+
+    # ======================================
+    # 5. DELETE RENTAL REQUESTS (user can be renter or owner)
+    # ======================================
+    RentalRequest.query.filter(
+        (RentalRequest.renter_id == user.id) |
+        (RentalRequest.owner_id == user.id)
+    ).delete(synchronize_session=False)
+
+    # ======================================
+    # 6. DELETE USER
+    # ======================================
     db.session.delete(user)
     db.session.commit()
 
