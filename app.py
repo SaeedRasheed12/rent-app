@@ -1125,34 +1125,54 @@ def admin_delete_user(user_id):
     flash("User deleted permanently!", "danger")
     return redirect("/admin")
 
+import requests
+from flask import request, jsonify
+
+FCM_SERVER_KEY = "AIzaSyCligawVSMm0JrSmd-onEqK_7fOnsNNkig"   # your key
+FCM_URL = "https://fcm.googleapis.com/fcm/send"
+
+
 @app.route("/api/update_fcm_token", methods=["POST"])
 def update_fcm_token():
     data = request.json
-    user = User.query.get(data["user_id"])
-    user.fcm_token = data["fcm_token"]
+    user_id = data.get("user_id")
+    token = data.get("fcm_token")
+
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({"success": False, "message": "User not found"}), 404
+
+    user.fcm_token = token
     db.session.commit()
-    return jsonify({"success": True})
+
+    return jsonify({"success": True, "message": "Token saved"})
+
 
 def send_push(token, title, body, data=None):
     if not token:
-        print("No token found, skipping push")
+        print("⚠️ No FCM token, skipping push.")
         return
 
-    message = messaging.Message(
-        notification=messaging.Notification(
-            title=title,
-            body=body
-        ),
-        data=data or {},
-        token=token
-    )
+    headers = {
+        "Authorization": f"key={FCM_SERVER_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    payload = {
+        "to": token,
+        "notification": {
+            "title": title,
+            "body": body
+        },
+        "data": data or {}
+    }
 
     try:
-        response = messaging.send(message)
-        print("Push sent:", response)
-    except Exception as e:
-        print("Push Error:", e)
+        response = requests.post(FCM_URL, headers=headers, json=payload)
+        print("📨 Push Sent:", response.text)
 
+    except Exception as e:
+        print("❌ FCM Push Error:", e)
 
 # ================== MAIN ==================
 
