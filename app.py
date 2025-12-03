@@ -10,6 +10,14 @@ from datetime import datetime
 
 from flask_migrate import Migrate   # ✅ Added
 
+import firebase_admin
+from firebase_admin import credentials, messaging
+
+# Initialize Firebase Admin only ONCE
+if not firebase_admin._apps:
+    cred = credentials.Certificate("service_account.json")
+    firebase_admin.initialize_app(cred)
+
 # ================== LOAD ENVIRONMENT VARIABLES ==================
 load_dotenv()
 
@@ -36,6 +44,9 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
+
+
+
 
 # ================== CLOUDINARY CONFIG ==================
 cloudinary.config(
@@ -1114,45 +1125,33 @@ def admin_delete_user(user_id):
     flash("User deleted permanently!", "danger")
     return redirect("/admin")
 
-import firebase_admin
-from firebase_admin import credentials, messaging
-
-cred = credentials.Certificate("service_account.json")
-firebase_admin.initialize_app(cred)
-
 @app.route("/api/update_fcm_token", methods=["POST"])
 def update_fcm_token():
     data = request.json
     user = User.query.get(data["user_id"])
-
-    if not user:
-        return jsonify({"success": False, "message": "User not found"}), 404
-
     user.fcm_token = data["fcm_token"]
     db.session.commit()
-
     return jsonify({"success": True})
 
 def send_push(token, title, body, data=None):
     if not token:
-        print("⚠️ No token found, skipping.")
+        print("No token found, skipping push")
         return
 
     message = messaging.Message(
-        token=token,
         notification=messaging.Notification(
             title=title,
             body=body
         ),
-        data=data or {}
+        data=data or {},
+        token=token
     )
 
     try:
         response = messaging.send(message)
-        print("📨 Push Sent:", response)
-
+        print("Push sent:", response)
     except Exception as e:
-        print("❌ FCM Error:", e)
+        print("Push Error:", e)
 
 
 # ================== MAIN ==================
