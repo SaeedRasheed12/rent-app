@@ -178,7 +178,7 @@ class Message(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     # Add this column in Message model:
     audio_url = db.Column(db.String(500), nullable=True)
-
+    status = db.Column(db.String(20), default="sent")  
 
 class Setting(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -440,9 +440,14 @@ def delete_listing(listing_id):
 
     return jsonify({"success": True})
 
+# ============================================================
+#  SEND MESSAGE (TEXT + AUDIO)
+# ============================================================
 @app.route("/api/chat/send", methods=["POST"])
 def send_message():
-    # If request is JSON → text message only
+    # -----------------------------
+    # TEXT MESSAGE (JSON)
+    # -----------------------------
     if request.is_json:
         data = request.get_json()
         chat_id = data.get("chat_id")
@@ -452,13 +457,21 @@ def send_message():
         if not all([chat_id, sender_id]):
             return jsonify({"success": False, "error": "Missing fields"})
 
-        msg = Message(chat_id=chat_id, sender_id=sender_id, text=text)
+        msg = Message(
+            chat_id=chat_id,
+            sender_id=sender_id,
+            text=text,
+            status="sent",
+            is_read=False
+        )
         db.session.add(msg)
         db.session.commit()
 
         return jsonify({"success": True})
 
-    # Otherwise → Multipart (audio message upload)
+    # -----------------------------
+    # AUDIO MESSAGE (Multipart)
+    # -----------------------------
     data = request.form
     chat_id = data.get("chat_id")
     sender_id = data.get("sender_id")
@@ -471,25 +484,26 @@ def send_message():
 
     audio_url = None
 
+    # Upload audio to Cloudinary
     if audio_file:
-        # Upload audio to Cloudinary
         try:
             upload_result = cloudinary.uploader.upload(
                 audio_file,
-                resource_type="video",   # ⭐ Cloudinary uses "video" for audio
-                folder="rentnow_audio",  # ⭐ Folder name
+                resource_type="video",       # Cloudinary treats audio as video
+                folder="rentnow_audio",
                 public_id=f"voice_{sender_id}_{int(time.time())}"
             )
             audio_url = upload_result.get("secure_url")
         except Exception as e:
             return jsonify({"success": False, "error": str(e)})
 
-    # Save message
     msg = Message(
         chat_id=chat_id,
         sender_id=sender_id,
         text=text,
-        audio_url=audio_url
+        audio_url=audio_url,
+        status="sent",
+        is_read=False
     )
 
     db.session.add(msg)
@@ -499,7 +513,22 @@ def send_message():
 
 @app.route("/api/chat/messages/<int:chat_id>")
 def get_messages(chat_id):
-    messages = Message.query.filter_by(chat_id=chat_id).order_by(Message.created_at.asc()).all()
+    messages = Message.query.filter_by(chat_id=chat_id)\
+                .order_by(Message.created_at.asc()).all()
+
+    user_id = request.args.get("user_id", type=int)
+
+    # -----------------------------
+    # UPDATE "sent" → "delivered"
+    # -----------------------------
+    if user_id:
+        changed = False
+        for m in messages:
+            if m.sender_id != user_id and m.status == "sent":
+                m.status = "delivered"
+                changed = True
+        if changed:
+            db.session.commit()
 
     return jsonify({
         "success": True,
@@ -508,7 +537,9 @@ def get_messages(chat_id):
                 "id": m.id,
                 "sender_id": m.sender_id,
                 "text": m.text,
-                "audio_url": m.audio_url,      # ⭐ NEW
+                "audio_url": m.audio_url,
+                "status": m.status,
+                "is_read": m.is_read,
                 "time": m.created_at.isoformat()
             }
             for m in messages
@@ -524,16 +555,15 @@ def chat_list(user_id):
     data = []
 
     for c in chats:
-        # Find the other user
         other_id = c.user2_id if c.user1_id == user_id else c.user1_id
         other = User.query.get(other_id)
 
-        # Last message preview
-        last_msg = Message.query.filter_by(chat_id=c.id) \
-            .order_by(Message.created_at.desc()).first()
-        last_message = last_msg.text if last_msg else ""
+        last_msg = Message.query.filter_by(chat_id=c.id)\
+                    .order_by(Message.created_at.desc()).first()
 
-        # Unread count
+        last_message = last_msg.text if last_msg else ""
+        last_status = last_msg.status if last_msg else None
+
         unread_count = Message.query.filter(
             Message.chat_id == c.id,
             Message.sender_id != user_id,
@@ -547,6 +577,7 @@ def chat_list(user_id):
                 "name": other.name
             },
             "last_message": last_message,
+            "last_status": last_status,
             "unread_count": unread_count
         })
 
@@ -581,11 +612,17 @@ def mark_read():
     chat_id = data.get("chat_id")
     user_id = data.get("user_id")
 
-    Message.query.filter_by(chat_id=chat_id).filter(
-        Message.sender_id != user_id
-    ).update({"is_read": True})
+    messages = Message.query.filter_by(chat_id=chat_id).all()
 
-    db.session.commit()
+    changed = False
+    for m in messages:
+        if m.sender_id != user_id and m.status in ["sent", "delivered"]:
+            m.status = "seen"
+            m.is_read = True
+            changed = True
+
+    if changed:
+        db.session.commit()
 
     return jsonify({"success": True})
 
@@ -594,18 +631,16 @@ def start_chat():
     data = request.get_json()
     user1_id = data.get("user1_id")
     user2_id = data.get("user2_id")
-    listing_id = data.get("listing_id")  # optional
+    listing_id = data.get("listing_id")
 
     if not all([user1_id, user2_id]):
         return jsonify({"success": False, "error": "Missing IDs"})
 
-    # Check if chat already exists
     chat = Chat.query.filter(
         ((Chat.user1_id == user1_id) & (Chat.user2_id == user2_id)) |
         ((Chat.user1_id == user2_id) & (Chat.user2_id == user1_id))
     ).first()
 
-    # If not exists → create new chat
     if not chat:
         chat = Chat(
             user1_id=user1_id,
