@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify, render_template, redirect, url_for, flash
+import time
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -175,6 +176,9 @@ class Message(db.Model):
     text = db.Column(db.Text)
     is_read = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    # Add this column in Message model:
+    audio_url = db.Column(db.String(500), nullable=True)
+
 
 class Setting(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -438,19 +442,60 @@ def delete_listing(listing_id):
 
 @app.route("/api/chat/send", methods=["POST"])
 def send_message():
-    data = request.get_json()
+    # If request is JSON → text message only
+    if request.is_json:
+        data = request.get_json()
+        chat_id = data.get("chat_id")
+        sender_id = data.get("sender_id")
+        text = data.get("text", "")
+
+        if not all([chat_id, sender_id]):
+            return jsonify({"success": False, "error": "Missing fields"})
+
+        msg = Message(chat_id=chat_id, sender_id=sender_id, text=text)
+        db.session.add(msg)
+        db.session.commit()
+
+        return jsonify({"success": True})
+
+    # Otherwise → Multipart (audio message upload)
+    data = request.form
     chat_id = data.get("chat_id")
     sender_id = data.get("sender_id")
-    text = data.get("text")
+    text = data.get("text", "")
 
-    if not all([chat_id, sender_id, text]):
-        return jsonify({"success": False})
+    audio_file = request.files.get("audio")
 
-    msg = Message(chat_id=chat_id, sender_id=sender_id, text=text)
+    if not all([chat_id, sender_id]):
+        return jsonify({"success": False, "error": "Missing fields"})
+
+    audio_url = None
+
+    if audio_file:
+        # Upload audio to Cloudinary
+        try:
+            upload_result = cloudinary.uploader.upload(
+                audio_file,
+                resource_type="video",   # ⭐ Cloudinary uses "video" for audio
+                folder="rentnow_audio",  # ⭐ Folder name
+                public_id=f"voice_{sender_id}_{int(time.time())}"
+            )
+            audio_url = upload_result.get("secure_url")
+        except Exception as e:
+            return jsonify({"success": False, "error": str(e)})
+
+    # Save message
+    msg = Message(
+        chat_id=chat_id,
+        sender_id=sender_id,
+        text=text,
+        audio_url=audio_url
+    )
+
     db.session.add(msg)
     db.session.commit()
 
-    return jsonify({"success": True})
+    return jsonify({"success": True, "audio_url": audio_url})
 
 @app.route("/api/chat/messages/<int:chat_id>")
 def get_messages(chat_id):
@@ -463,8 +508,10 @@ def get_messages(chat_id):
                 "id": m.id,
                 "sender_id": m.sender_id,
                 "text": m.text,
+                "audio_url": m.audio_url,      # ⭐ NEW
                 "time": m.created_at.isoformat()
-            } for m in messages
+            }
+            for m in messages
         ]
     })
 
