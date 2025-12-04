@@ -10,14 +10,6 @@ from datetime import datetime
 
 from flask_migrate import Migrate   # ✅ Added
 
-import firebase_admin
-from firebase_admin import credentials, messaging
-
-# Initialize Firebase Admin only ONCE
-if not firebase_admin._apps:
-    cred = credentials.Certificate("service_account.json")
-    firebase_admin.initialize_app(cred)
-
 # ================== LOAD ENVIRONMENT VARIABLES ==================
 load_dotenv()
 
@@ -45,9 +37,6 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
 
-
-
-
 # ================== CLOUDINARY CONFIG ==================
 cloudinary.config(
     cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
@@ -66,7 +55,6 @@ class User(db.Model):
     created_at = db.Column(db.DateTime, server_default=db.func.now())
     
     is_blocked = db.Column(db.Boolean, default=False)   # ⭐ NEW
-    fcm_token = db.Column(db.String(500))
 
 from sqlalchemy.dialects.postgresql import JSON
 
@@ -458,27 +446,9 @@ def send_message():
     if not all([chat_id, sender_id, text]):
         return jsonify({"success": False})
 
-    # Save message
     msg = Message(chat_id=chat_id, sender_id=sender_id, text=text)
     db.session.add(msg)
     db.session.commit()
-
-    # 🔥 Find receiver
-    chat = Chat.query.get(chat_id)
-    receiver_id = chat.user2_id if chat.user1_id == sender_id else chat.user1_id
-    receiver = User.query.get(receiver_id)
-    sender = User.query.get(sender_id)
-
-    # 🔥 Push message notification
-    send_push(
-        receiver.fcm_token,
-        title=f"New message from {sender.name}",
-        body=text,
-        data={
-            "screen": "chat",
-            "chat_id": str(chat_id)
-        }
-    )
 
     return jsonify({"success": True})
 
@@ -776,20 +746,14 @@ def create_rental_request():
     )
 
     db.session.add(req)
+
+    # ❌ Do NOT hide listing here
+    # listing.is_rented = True  <-- REMOVED
+
     db.session.commit()
 
-    # 🔥 SEND PUSH TO OWNER
-    owner = User.query.get(data["owner_id"])
-    renter = User.query.get(data["renter_id"])
-
-    send_push(
-        owner.fcm_token,
-        title="New Rental Request",
-        body=f"{renter.name} wants to rent your item.",
-        data={"screen": "rentals"}
-    )
-
     return jsonify({"success": True, "message": "Request created"})
+
 
 @app.route("/api/rent/status/<int:listing_id>/<int:user_id>")
 def rent_status(listing_id, user_id):
@@ -1124,55 +1088,6 @@ def admin_delete_user(user_id):
 
     flash("User deleted permanently!", "danger")
     return redirect("/admin")
-
-import requests
-from flask import request, jsonify
-
-FCM_SERVER_KEY = "AIzaSyCligawVSMm0JrSmd-onEqK_7fOnsNNkig"   # your key
-FCM_URL = "https://fcm.googleapis.com/fcm/send"
-
-
-@app.route("/api/update_fcm_token", methods=["POST"])
-def update_fcm_token():
-    data = request.json
-    user_id = data.get("user_id")
-    token = data.get("fcm_token")
-
-    user = User.query.get(user_id)
-    if not user:
-        return jsonify({"success": False, "message": "User not found"}), 404
-
-    user.fcm_token = token
-    db.session.commit()
-
-    return jsonify({"success": True, "message": "Token saved"})
-
-
-def send_push(token, title, body, data=None):
-    if not token:
-        print("⚠️ No FCM token, skipping push.")
-        return
-
-    headers = {
-        "Authorization": f"key={FCM_SERVER_KEY}",
-        "Content-Type": "application/json"
-    }
-
-    payload = {
-        "to": token,
-        "notification": {
-            "title": title,
-            "body": body
-        },
-        "data": data or {}
-    }
-
-    try:
-        response = requests.post(FCM_URL, headers=headers, json=payload)
-        print("📨 Push Sent:", response.text)
-
-    except Exception as e:
-        print("❌ FCM Push Error:", e)
 
 # ================== MAIN ==================
 
