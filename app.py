@@ -989,13 +989,34 @@ def rent_return():
     db.session.commit()
     return jsonify({"success": True})
 
-
 @app.route("/api/rent/create_safe", methods=["POST"])
 def create_safe_rent():
     data = request.json
 
+    renter_id = data["renter_id"]
+
+    # -------------------------------------------------------------
+    # ❗ BLOCK USER IF THEY ALREADY HAVE AN ACTIVE RENTAL
+    # -------------------------------------------------------------
+    active_rental = RentalRequest.query.filter(
+        RentalRequest.renter_id == renter_id,
+        RentalRequest.status.in_(["accepted", "ongoing"])  # actively rented
+    ).first()
+
+    if active_rental:
+        return jsonify({
+            "success": False,
+            "error": "You already have an active rental. Return your current item first."
+        }), 400
+
+    # -------------------------------------------------------------
+    # 🔥 CREATE OR GET CHAT
+    # -------------------------------------------------------------
     chat_id = get_or_create_chat(data["renter_id"], data["owner_id"])
 
+    # -------------------------------------------------------------
+    # ⭐ CREATE RENTAL REQUEST (SAFE MODE)
+    # -------------------------------------------------------------
     req = RentalRequest(
         listing_id=data["listing_id"],
         renter_id=data["renter_id"],
@@ -1020,13 +1041,13 @@ def create_safe_rent():
     )
 
     db.session.add(req)
-
-    # ❌ Do NOT auto-hide
-    # listing.is_rented = True   <-- REMOVED
-
     db.session.commit()
 
-    return jsonify({"success": True, "message": "Safe rental request created", "chat_id": chat_id})
+    return jsonify({
+        "success": True,
+        "message": "Safe rental request created",
+        "chat_id": chat_id
+    })
 
 @app.route("/api/rent/check_request", methods=["POST"])
 def check_rent_request():
