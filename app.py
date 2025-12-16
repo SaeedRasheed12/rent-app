@@ -514,19 +514,24 @@ def send_message():
 @app.route("/api/chat/messages/<int:chat_id>")
 def get_messages(chat_id):
     messages = Message.query.filter_by(chat_id=chat_id)\
-                .order_by(Message.created_at.asc()).all()
+        .order_by(Message.created_at.asc()).all()
 
     user_id = request.args.get("user_id", type=int)
 
-    # -----------------------------
-    # UPDATE "sent" → "delivered"
-    # -----------------------------
     if user_id:
         changed = False
         for m in messages:
-            if m.sender_id != user_id and m.status == "sent":
-                m.status = "delivered"
-                changed = True
+            if m.sender_id != user_id:
+                # sent → delivered
+                if m.status == "sent":
+                    m.status = "delivered"
+
+                # 🔥 THIS FIXES UNREAD BADGE
+                if not m.is_read:
+                    m.is_read = True
+                    m.status = "seen"
+                    changed = True
+
         if changed:
             db.session.commit()
 
@@ -612,18 +617,16 @@ def mark_read():
     chat_id = data.get("chat_id")
     user_id = data.get("user_id")
 
-    messages = Message.query.filter_by(chat_id=chat_id).all()
+    Message.query.filter(
+        Message.chat_id == chat_id,
+        Message.sender_id != user_id,
+        Message.is_read == False
+    ).update({
+        "is_read": True,
+        "status": "seen"
+    })
 
-    changed = False
-    for m in messages:
-        if m.sender_id != user_id and m.status in ["sent", "delivered"]:
-            m.status = "seen"
-            m.is_read = True
-            changed = True
-
-    if changed:
-        db.session.commit()
-
+    db.session.commit()
     return jsonify({"success": True})
 
 @app.route("/api/chat/start", methods=["POST"])
